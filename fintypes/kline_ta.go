@@ -11,6 +11,7 @@ import (
 	"github.com/shawnwyckoff/gopkg/container/gdecimal"
 	"github.com/shawnwyckoff/gopkg/container/gjson"
 	"github.com/shawnwyckoff/gopkg/container/gstring"
+	"github.com/shawnwyckoff/gopkg/container/gternary"
 	"github.com/shawnwyckoff/gopkg/sys/gtime"
 	"math"
 	"sort"
@@ -584,6 +585,37 @@ func (kta *KTA) LastDirs(exp string, directionSize int, gt *time.Time) ([]DirWT,
 		panic(fmt.Sprintf("%d,%d", oldLen, len(res)))
 	}
 	return res, nil
+}
+
+// 最后一个方向反转处的某表达式的值
+// 适用于Donchian Channel
+func (kta *KTA) LastDirReversalExprValue(exp string, gt *time.Time) (float64, error) {
+	//fmt.Println("kta.K.LastTime", kta.K().LastTime(gtime.ZeroTime), len(kta.K().Items[kta.K().Len()-1].indicators))
+	tmp := kta.K()
+	if gt != nil && gt.After(kta.K().FirstTime(gtime.ZeroTime)) {
+		tmp = kta.K().SliceAfter(*gt)
+	}
+	//fmt.Println("tmp.LastTime", tmp.LastTime(gtime.ZeroTime), len(tmp.Items[tmp.Len()-1].indicators))
+
+	evs, err := tmp.ExprValues(exp)
+	if err != nil {
+		return 0.0, err
+	}
+
+	var reverseFirstDir *Dir = nil
+	for i := len(evs) - 1; i > 0; i-- {
+		if evs[i] == evs[i-1] {
+			continue
+		}
+		currDir := gternary.If(evs[i] < evs[i-1]).Interface(TADirectionDown, TADirectionUp).(Dir)
+		if reverseFirstDir == nil {
+			reverseFirstDir = &currDir
+		} else if currDir != *reverseFirstDir {
+			return evs[i], nil
+		}
+	}
+
+	return 0.0, gerror.Errorf("LastDirReversalExprValue not found")
 }
 
 func getShockScale(oldDot, newDot Bar) int {
