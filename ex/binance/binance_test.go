@@ -43,7 +43,7 @@ func TestBinance_Trade(t *testing.T) {
 		return
 	}
 
-	oi, err := bnc.Trade(fintypes.MarketSpot, fintypes.MarginNo, 1, fintypes.HOLO.Against(fintypes.ETH), fintypes.OrderSideBuyLong, fintypes.OrderTypeLimit, gdecimal.NewFromInt(10000), gdecimal.NewFromFloat64(0.0000023))
+	oi, err := bnc.Trade(fintypes.MarketSpot, fintypes.MarginNo, 1, fintypes.HOLO.Against(fintypes.ETH), fintypes.OrderSideBuyLong, fintypes.OrderTypeLimit, gdecimal.NewFromInt(10000), gdecimal.NewFromFloat64(0.0000023), gdecimal.Zero)
 	if err != nil {
 		t.Error(err)
 		return

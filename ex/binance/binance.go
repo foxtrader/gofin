@@ -135,6 +135,8 @@ func (ex *Client) binanceOrderToApiOrder(accType fintypes.Market, margin fintype
 	}
 	if src.Type == binance.OrderTypeLimit {
 		res.Type = fintypes.OrderTypeLimit
+	} else if src.Type == binance.OrderTypeStopLossLimit {
+		res.Type = fintypes.OrderTypeStopLimit
 	} else if src.Type == binance.OrderTypeMarket {
 		res.Type = fintypes.OrderTypeMarket
 	} else {
@@ -164,7 +166,7 @@ func (ex *Client) binanceOrderToApiOrder(accType fintypes.Market, margin fintype
 	if err != nil {
 		return nil, err
 	}
-	return nil, nil
+	return &res, nil
 }
 
 func (ex *Client) binanceMarginAllOrderToOrder(src *binance.MarginAllOrder) *binance.Order {
@@ -230,6 +232,8 @@ func (ex *Client) binancePerpOrderToApiOrder(market fintypes.Market, margin fint
 	}
 	if src.Type == futures.OrderTypeLimit {
 		res.Type = fintypes.OrderTypeLimit
+	} else if src.Type == futures.OrderTypeStop {
+		res.Type = fintypes.OrderTypeStopLimit
 	} else if src.Type == futures.OrderTypeMarket {
 		res.Type = fintypes.OrderTypeMarket
 	} else {
@@ -257,7 +261,7 @@ func (ex *Client) binancePerpOrderToApiOrder(market fintypes.Market, margin fint
 	if err != nil {
 		return nil, err
 	}
-	return nil, nil
+	return res, nil
 }
 
 func (ex *Client) Property() *fintypes.ExProperty {
@@ -296,11 +300,17 @@ func (ex *Client) GetMarketInfo() (*fintypes.MarketInfo, error) {
 		spotInfo.QuotePrecision = symbol.QuotePrecision
 		for _, filterMap := range symbol.Filters {
 			if ft, ok := filterMap["filterType"]; ok && ft == "LOT_SIZE" {
-				spotInfo.LotMin, err = gdecimal.NewFromString(filterMap["minQty"].(string))
+				spotInfo.UnitMin, err = gdecimal.NewFromString(filterMap["minQty"].(string))
 				if err != nil {
 					return nil, err
 				}
-				spotInfo.LotStep, err = gdecimal.NewFromString(filterMap["stepSize"].(string))
+				spotInfo.UnitStep, err = gdecimal.NewFromString(filterMap["stepSize"].(string))
+				if err != nil {
+					return nil, err
+				}
+			}
+			if ft, ok := filterMap["filterType"]; ok && ft == "PRICE_FILTER" {
+				spotInfo.QuoteStep, err = gdecimal.NewFromString(filterMap["minPrice"].(string))
 				if err != nil {
 					return nil, err
 				}
@@ -335,11 +345,17 @@ func (ex *Client) GetMarketInfo() (*fintypes.MarketInfo, error) {
 		perpInfo.Enabled = true
 		for _, filterMap := range symbol.Filters {
 			if ft, ok := filterMap["filterType"]; ok && ft == "LOT_SIZE" {
-				perpInfo.LotMin, err = gdecimal.NewFromString(filterMap["minQty"].(string))
+				perpInfo.UnitMin, err = gdecimal.NewFromString(filterMap["minQty"].(string))
 				if err != nil {
 					return nil, err
 				}
-				perpInfo.LotStep, err = gdecimal.NewFromString(filterMap["stepSize"].(string))
+				perpInfo.UnitStep, err = gdecimal.NewFromString(filterMap["stepSize"].(string))
+				if err != nil {
+					return nil, err
+				}
+			}
+			if ft, ok := filterMap["filterType"]; ok && ft == "PRICE_FILTER" {
+				perpInfo.QuoteStep, err = gdecimal.NewFromString(filterMap["minPrice"].(string))
 				if err != nil {
 					return nil, err
 				}
@@ -892,6 +908,8 @@ func (ex *Client) typeSideToBinance(side fintypes.OrderSide, orderType fintypes.
 		resType = binance.OrderTypeLimit
 	} else if orderType == fintypes.OrderTypeMarket {
 		resType = binance.OrderTypeMarket
+	} else if orderType == fintypes.OrderTypeStopLimit {
+		resType = binance.OrderTypeStopLossLimit
 	} else {
 		return resSide, resType, errors.Errorf("unsupported OrderType(%s)", orderType)
 	}
@@ -920,7 +938,7 @@ func (ex *Client) typeSideToBinanceContract(side fintypes.OrderSide, orderType f
 	return resSide, resType, nil
 }
 
-func (ex *Client) Trade(market fintypes.Market, margin fintypes.Margin, leverage int, target fintypes.Pair, side fintypes.OrderSide, orderType fintypes.OrderType, amount, price gdecimal.Decimal) (*fintypes.OrderId, error) {
+func (ex *Client) Trade(market fintypes.Market, margin fintypes.Margin, leverage int, target fintypes.Pair, side fintypes.OrderSide, orderType fintypes.OrderType, amount, price, stopPrice gdecimal.Decimal) (*fintypes.OrderId, error) {
 	if err := target.Verify(); err != nil {
 		return nil, err
 	}
@@ -932,10 +950,10 @@ func (ex *Client) Trade(market fintypes.Market, margin fintypes.Margin, leverage
 			return nil, err
 		}
 	}
-	pairMi, ok := ex.marketInfoCache.Infos[target.SetM(market)]
+	/*pairMi, ok := ex.marketInfoCache.Infos[target.SetM(market)]
 	if !ok {
 		return nil, errors.Errorf("market info required for pair(%s)", target.String())
-	}
+	}*/
 
 	// process spot and margin trade request
 	if market == fintypes.MarketSpot {
@@ -947,15 +965,21 @@ func (ex *Client) Trade(market fintypes.Market, margin fintypes.Margin, leverage
 
 		od := &binance.CreateOrderResponse{}
 		if margin == fintypes.MarginNo {
-			cos := ex.in.NewCreateOrderService().Symbol(target.CustomFormat(ex.Property())).Side(bncSide).Type(bncOt).TimeInForce(binance.TimeInForceTypeGTC).Quantity(amount.Trunc(pairMi.UnitPrecision, pairMi.LotStep.Float64()).String())
+			cos := ex.in.NewCreateOrderService().Symbol(target.CustomFormat(ex.Property())).Side(bncSide).Type(bncOt).TimeInForce(binance.TimeInForceTypeGTC).Quantity(amount. /*.Trunc2(pairMi.UnitMin, pairMi.UnitStep.Float64())*/ String())
 			if orderType.IsLimit() {
-				cos = cos.Price(price.String())
+				cos = cos.Price(price. /*.Trunc2(pairMi.QuoteStep, pairMi.QuoteStep.Float64())*/ String())
+			}
+			if orderType.IsStopLimit() {
+				cos = cos.Price(price. /*.Trunc2(pairMi.QuoteStep, pairMi.QuoteStep.Float64())*/ String()).StopPrice(stopPrice. /*.Trunc2(pairMi.QuoteStep, pairMi.QuoteStep.Float64())*/ String())
 			}
 			od, err = cos.Do(context.Background())
 		} else if margin == fintypes.MarginCross {
-			cos := ex.in.NewCreateMarginOrderService().Symbol(target.CustomFormat(ex.Property())).Side(bncSide).Type(bncOt).TimeInForce(binance.TimeInForceTypeGTC).Quantity(amount.Trunc(pairMi.UnitPrecision, pairMi.LotStep.Float64()).String())
+			cos := ex.in.NewCreateMarginOrderService().Symbol(target.CustomFormat(ex.Property())).Side(bncSide).Type(bncOt).TimeInForce(binance.TimeInForceTypeGTC).Quantity(amount. /*.Trunc2(pairMi.UnitMin, pairMi.UnitStep.Float64())*/ String())
 			if orderType.IsLimit() {
-				cos = cos.Price(price.String())
+				cos = cos.Price(price. /*.Trunc2(pairMi.QuoteStep, pairMi.QuoteStep.Float64())*/ String())
+			}
+			if orderType.IsStopLimit() {
+				cos = cos.Price(price. /*.Trunc2(pairMi.QuoteStep, pairMi.QuoteStep.Float64())*/ String()).StopPrice(stopPrice. /*.Trunc2(pairMi.QuoteStep, pairMi.QuoteStep.Float64())*/ String())
 			}
 			od, err = cos.Do(context.Background())
 		} else {
@@ -984,7 +1008,7 @@ func (ex *Client) Trade(market fintypes.Market, margin fintypes.Margin, leverage
 		} else if margin == fintypes.MarginCross {
 			marginType = futures.MarginTypeCrossed
 		} else {
-			return nil, gerror.Errorf("Margin(%s) not supported in Trade", margin)
+			return nil, gerror.Errorf("Margin(%s) not supported in SetPosition", margin)
 		}
 		if err := ex.inPerp.NewChangeMarginTypeService().Symbol(target.CustomFormat(ex.Property())).MarginType(marginType).Do(context.Background()); err != nil {
 			return nil, err
@@ -997,9 +1021,12 @@ func (ex *Client) Trade(market fintypes.Market, margin fintypes.Margin, leverage
 		}
 
 		// 下单
-		cos := ex.inPerp.NewCreateOrderService().Symbol(target.CustomFormat(ex.Property())).Side(bncSide).Type(bncOt).TimeInForce(futures.TimeInForceTypeGTC).Quantity(amount.Trunc(pairMi.UnitPrecision, pairMi.LotStep.Float64()).String())
+		cos := ex.inPerp.NewCreateOrderService().Symbol(target.CustomFormat(ex.Property())).Side(bncSide).Type(bncOt).TimeInForce(futures.TimeInForceTypeGTC).Quantity(amount. /*.Trunc2(pairMi.UnitMin, pairMi.UnitStep.Float64())*/ String())
 		if orderType.IsLimit() {
-			cos = cos.Price(price.String())
+			cos = cos.Price(price. /*.Trunc2(pairMi.QuoteStep, pairMi.QuoteStep.Float64())*/ String())
+		}
+		if orderType.IsStopLimit() {
+			cos = cos.Price(price. /*.Trunc2(pairMi.QuoteStep, pairMi.QuoteStep.Float64())*/ String()).StopPrice(stopPrice. /*.Trunc2(pairMi.QuoteStep, pairMi.QuoteStep.Float64())*/ String())
 		}
 		od, err := cos.Do(context.Background())
 		if err != nil {
@@ -1009,7 +1036,7 @@ func (ex *Client) Trade(market fintypes.Market, margin fintypes.Margin, leverage
 		return &res, nil
 	}
 
-	return nil, gerror.Errorf("invalid Market(%s) in Trade", market)
+	return nil, gerror.Errorf("invalid Market(%s) in SetPosition", market)
 }
 
 func (ex *Client) GetAllOrders(market fintypes.Market, margin fintypes.Margin, target fintypes.Pair) ([]fintypes.Order, error) {
