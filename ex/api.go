@@ -47,7 +47,7 @@ type (
 
 		// amount: always unit amount, not quote amount, whether buy or sell
 		// price: when market-buy/market-sell, price will be ignored
-		Trade(market fintypes.Market, margin fintypes.Margin, leverage int, target fintypes.Pair, side fintypes.OrderSide, orderType fintypes.OrderType, amount, price gdecimal.Decimal) (*fintypes.OrderId, error)
+		Trade(market fintypes.Market, margin fintypes.Margin, leverage int, target fintypes.Pair, side fintypes.OrderSide, orderType fintypes.OrderType, unitAmount, price, stopPrice gdecimal.Decimal) (*fintypes.OrderId, error)
 
 		// get all my history orders' info
 		GetAllOrders(market fintypes.Market, margin fintypes.Margin, target fintypes.Pair) ([]fintypes.Order, error)
