@@ -49,6 +49,7 @@ type (
 		Side       OrderSide
 		Type       OrderType
 		Status     OrderStatus
+		StopPrice  *gdecimal.Decimal // 止盈止损触发价，限价单才有
 		Price      gdecimal.Decimal
 		Amount     gdecimal.Decimal // initial total amount in unit, unit always
 		AvgPrice   gdecimal.Decimal // Binance貌似不提供AvgPrice
@@ -73,9 +74,10 @@ const (
 	OrderSideBuyLong   OrderSide = "buy"
 	OrderSideSellShort OrderSide = "sell"
 
-	OrderTypeError  OrderType = ""
-	OrderTypeLimit  OrderType = "limit"
-	OrderTypeMarket OrderType = "market"
+	OrderTypeError     OrderType = ""
+	OrderTypeLimit     OrderType = "limit"
+	OrderTypeMarket    OrderType = "market"
+	OrderTypeStopLimit OrderType = "stop_limit"
 
 	TradeIntentError  TradeIntent = ""
 	TradeIntentOpen   TradeIntent = "open"   // 开仓进场
@@ -230,6 +232,10 @@ func (tt OrderType) IsLimit() bool {
 
 func (tt OrderType) IsMarket() bool {
 	return tt == OrderTypeMarket
+}
+
+func (tt OrderType) IsStopLimit() bool {
+	return tt == OrderTypeStopLimit
 }
 
 func (tt OrderType) CustomFormat(config *ExProperty) string {
