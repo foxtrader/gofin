@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/foxtrader/gofin/ta"
 	"github.com/pkg/errors"
+	"github.com/shawnwyckoff/gopkg/apputil/gerror"
 	"github.com/shawnwyckoff/gopkg/container/gdecimal"
 	"github.com/shawnwyckoff/gopkg/container/gnum"
 	"github.com/shawnwyckoff/gopkg/container/gstring"
@@ -1166,15 +1167,26 @@ func (k *Kline) ExprValues(expr string) ([]float64, error) {
 	var r []float64
 	for i := 0; i < k.Len(); i++ {
 		if k.Items[i].Indicators == nil {
-			return nil, errors.Errorf("indicators of Bar index(%d) T(%s) is null, total size %d, max time %s", i, k.Items[i].T.UTC().String(), k.Len(), k.LastTime(gtime.ZeroTime))
+			return nil, errors.Errorf("indicator of Bar index(%d) T(%s) is null, total size %d, max time %s", i, k.Items[i].T.UTC().String(), k.Len(), k.LastTime(gtime.ZeroTime))
 		}
 		val, ok := k.Items[i].Indicators[expr]
 		if !ok {
-			return nil, errors.Errorf(`indicators "%s" of Bar index(%d) T(%s) not exist`, expr, i, k.Items[i].T.UTC().String())
+			return nil, errors.Errorf(`indicator "%s" of Bar index(%d) T(%s) not exist`, expr, i, k.Items[i].T.UTC().String())
 		}
 		r = append(r, val)
 	}
 	return r, nil
+}
+
+func (k *Kline) LastExprValue(expr string) (float64, error) {
+	if k.Len() == 0 {
+		return 0.0, gerror.Errorf("empty kline")
+	}
+	indVal, exist := k.Items[k.Len()-1].Indicators[expr]
+	if !exist {
+		return 0.0, errors.Errorf(`indicator "%s" of tail bar not exist`, expr)
+	}
+	return indVal, nil
 }
 
 func (k *Kline) Exprs() []string {
