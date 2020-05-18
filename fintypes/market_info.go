@@ -13,10 +13,11 @@ type (
 	PairInfo struct {
 		// spot only
 		Enabled        bool
-		UnitPrecision  int              // FIXME precision of price & amount?
-		QuotePrecision int              // FIXME precision of price & amount?
-		LotMin         gdecimal.Decimal // mostly it is the same as LostStep
-		LotStep        gdecimal.Decimal // min trade amount in unit, same as amount in Trade()
+		UnitPrecision  int              // precision of unit amount? NO, seems useless
+		QuotePrecision int              // precision of quote price? NO, seems useless
+		UnitMin        gdecimal.Decimal // unit min trade amount, mostly it is the same as LostStep
+		UnitStep       gdecimal.Decimal // unit min step amount, min trade amount in unit, same as amount in SetPosition()
+		QuoteStep      gdecimal.Decimal // quote min movement
 
 		// shared
 		//MinLeverage    int // 最小杠杆倍数
