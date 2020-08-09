@@ -284,7 +284,7 @@ func (cc *CC) GetKlineProviderInfo() (*fintypes.KlineProviderInfo, error) {
 		return nil, err
 	}
 	for _, v := range allAssets {
-		r.SupportedPairs = append(r.SupportedPairs, fintypes.NewPair(v.Name(), "USD").SetI(fintypes.Period1Day).SetM(fintypes.MarketSpot).SetP(fintypes.CryptoCompare))
+		r.SupportedPairs = append(r.SupportedPairs, fintypes.NewPair(v.Name(), "USD").SetM(fintypes.MarketSpot) /*.SetI(fintypes.Period1Day).SetP(fintypes.CryptoCompare)*/)
 	}
 	r.MinPeriod = fintypes.Period1Day
 	r.KlineRequestRateLimit = time.Second / 100 * 127

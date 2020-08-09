@@ -49,7 +49,7 @@ type (
 		Side       OrderSide
 		Type       OrderType
 		Status     OrderStatus
-		StopPrice  *gdecimal.Decimal // 止盈止损触发价，限价单才有
+		StopPrice  gdecimal.Decimal // 止盈止损触发价，限价单才有 FIXME 如果该用*会导致程序崩溃
 		Price      gdecimal.Decimal
 		Amount     gdecimal.Decimal // initial total amount in unit, unit always
 		AvgPrice   gdecimal.Decimal // Binance貌似不提供AvgPrice
@@ -61,14 +61,15 @@ type (
 const (
 	OrderIdDelimiter = ":"
 
-	OrderStatusError           OrderStatus = ""
-	OrderStatusNew             OrderStatus = "new"
-	OrderStatusPartiallyFilled OrderStatus = "partially_filled"
-	OrderStatusFilled          OrderStatus = "filled"
-	OrderStatusCanceled        OrderStatus = "canceled"
-	OrderStatusCanceling       OrderStatus = "canceling"
-	OrderStatusRejected        OrderStatus = "rejected"
-	OrderStatusExpired         OrderStatus = "expired"
+	OrderStatusError             OrderStatus = ""
+	OrderStatusNew               OrderStatus = "new"
+	OrderStatusPartiallyFilled   OrderStatus = "partially_filled"
+	OrderStatusFilled            OrderStatus = "filled"
+	OrderStatusPartiallyCanceled OrderStatus = "partially_canceled" // binance没有这个状态，huobi有
+	OrderStatusCanceled          OrderStatus = "canceled"
+	OrderStatusCanceling         OrderStatus = "canceling"
+	OrderStatusRejected          OrderStatus = "rejected"
+	OrderStatusExpired           OrderStatus = "expired"
 
 	OrderSideError     OrderSide = ""
 	OrderSideBuyLong   OrderSide = "buy"
@@ -84,6 +85,7 @@ const (
 	TradeIntentReduce TradeIntent = "reduce" // 减仓
 	TradeIntentAdd    TradeIntent = "add"    // 加仓
 	TradeIntentClose  TradeIntent = "close"  // 平仓离场
+	TradeIntentAdjust TradeIntent = "adjust" // 调整限价单/止盈止损单的点位
 
 	TradeIncomeError  TradeIncome = ""
 	TradeIncomeLoss   TradeIncome = "loss"   // 止损
@@ -94,6 +96,7 @@ func (ts OrderStatus) String() string {
 	return string(ts)
 }
 
+// FIXME 如果部分完成后取消了，这个订单的状态是什么
 func (ts OrderStatus) End() bool {
 	return ts == OrderStatusFilled || ts == OrderStatusCanceled || ts == OrderStatusRejected || ts == OrderStatusExpired
 }

@@ -48,7 +48,7 @@ func TestAccount_TotalInUSD(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	total, err := acc.ExchangeToUSD(ticks)
+	total, err := acc.ExchangeToUSD(ticks, false)
 	if err != nil {
 		t.Error(err)
 		return

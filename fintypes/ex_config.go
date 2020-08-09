@@ -2,7 +2,6 @@ package fintypes
 
 import (
 	"github.com/pkg/errors"
-	"github.com/shawnwyckoff/gopkg/container/gdecimal"
 	"github.com/shawnwyckoff/gopkg/sys/gtime"
 	"time"
 )
@@ -10,6 +9,15 @@ import (
 /*
 note: all timestamps are UTC + 0 timezone
 */
+
+type (
+	ExApi string
+)
+
+const (
+	ExApiGetKline ExApi = ExApi("ExApiGetKline")
+	ExApiGetFill  ExApi = ExApi("ExApiGetFill")
+)
 
 var (
 	ErrFunctionNotSupported = errors.Errorf("function not supported")
@@ -32,12 +40,7 @@ type (
 		OrderStatus            map[OrderStatus]string
 		OrderTypes             map[OrderType]string // FIXME 这里用OrderSide还是OrderType
 		OrderSides             map[OrderSide]string
-		RateLimit              time.Duration
-		FillRateLimit          time.Duration
-		KlineRateLimit         time.Duration
-		MakerFee               gdecimal.Decimal // fee of depth maker, 挂单等吃费率
-		TakerFee               gdecimal.Decimal // fee of depth taker, 主动吃单费率
-		WithdrawalFees         map[string]gdecimal.Decimal
+		RateLimits             map[ExApi]time.Duration
 		MarketEnabled          map[Market]bool
 		Clock                  gtime.Clock
 		IsBackTestEx           bool

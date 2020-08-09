@@ -52,6 +52,19 @@ func NewTestAccount(assets []string, totalInUSD gdecimal.Decimal, ticks Ticks) (
 	return r, nil
 }
 
+// 几倍风险，1表示满仓，2表示2倍风险
+/*unc (a *Account) GetPosition(market Market, pair Pair) gdecimal.Decimal {
+	unitAmount := gdecimal.Zero
+	quoteAmount := gdecimal.Zero
+
+	for _, v := range a.Balances {
+		if v.Market == market && strings.ToUpper(v.Asset) == strings.ToUpper(pair.Unit()) {
+			unitAmount = v.AssetAmount.Net()
+		}
+	}
+
+}*/
+
 // 根据资产名称获取总数量
 func (a *Account) GetAmountByName(asset string) AssetAmount {
 	res := &AssetAmount{}
@@ -74,6 +87,7 @@ func (a *Account) GetAmountByProperty(ap AssetProperty) AssetAmount {
 	return AssetAmount{}
 }
 
+// upsert new balance item
 func (a *Account) SetAmount(ap AssetProperty, amount AssetAmount) {
 	for i := range a.Balances {
 		if a.Balances[i].AssetPropertyEquals(ap) {
@@ -84,6 +98,34 @@ func (a *Account) SetAmount(ap AssetProperty, amount AssetAmount) {
 	a.Balances = append(a.Balances, Balance{
 		AssetProperty: ap,
 		AssetAmount:   amount,
+	})
+}
+
+// upsert free amount
+func (a *Account) SetFreeAmount(ap AssetProperty, freeAmount gdecimal.Decimal) {
+	for i := range a.Balances {
+		if a.Balances[i].AssetPropertyEquals(ap) {
+			a.Balances[i].AssetAmount.Free = freeAmount
+			return
+		}
+	}
+	a.Balances = append(a.Balances, Balance{
+		AssetProperty: ap,
+		AssetAmount:   AssetAmount{Free: freeAmount},
+	})
+}
+
+// upsert locked amount
+func (a *Account) SetLockedAmount(ap AssetProperty, lockedAmount gdecimal.Decimal) {
+	for i := range a.Balances {
+		if a.Balances[i].AssetPropertyEquals(ap) {
+			a.Balances[i].AssetAmount.Locked = lockedAmount
+			return
+		}
+	}
+	a.Balances = append(a.Balances, Balance{
+		AssetProperty: ap,
+		AssetAmount:   AssetAmount{Locked: lockedAmount},
 	})
 }
 
@@ -150,7 +192,7 @@ func (a *Account) AddFree(ap AssetProperty, toAdd gdecimal.Decimal) {
 
 // 换算成USD
 // 计算的用途是统计回报的相关指标
-func (a *Account) ExchangeToUSD(ticks Ticks) (*AssetAmount, error) {
+func (a *Account) ExchangeToUSD(ticks Ticks, ignoreNotFound bool) (*AssetAmount, error) {
 	res := &AssetAmount{}
 
 	for _, balance := range a.Balances {
@@ -160,6 +202,9 @@ func (a *Account) ExchangeToUSD(ticks Ticks) (*AssetAmount, error) {
 		} else {
 			price, err := ticks.GetUSDPrice(MarketSpot, unit)
 			if err != nil {
+				if ignoreNotFound {
+					continue
+				}
 				return nil, err
 			}
 			res.Free = res.Free.Add(balance.Free.Mul(price))

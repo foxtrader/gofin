@@ -67,10 +67,10 @@ func (yf *YFAPI) GetKlineProviderInfo() (*fintypes.KlineProviderInfo, error) {
 		return nil, err
 	}
 	for _, v := range stocks {
-		r.SupportedPairs = append(r.SupportedPairs, v.SetI(fintypes.Period1Day).SetM(fintypes.MarketSpot).SetP(fintypes.YahooFinance))
+		r.SupportedPairs = append(r.SupportedPairs, v.Pair().SetM(fintypes.MarketSpot) /*.SetI(fintypes.Period1Day).SetP(fintypes.YahooFinance)*/)
 	}
 	for _, v := range indexes {
-		r.SupportedPairs = append(r.SupportedPairs, v.SetI(fintypes.Period1Day).SetM(fintypes.MarketSpot).SetP(fintypes.YahooFinance))
+		r.SupportedPairs = append(r.SupportedPairs, v.Pair().SetM(fintypes.MarketSpot) /*.SetI(fintypes.Period1Day).SetP(fintypes.YahooFinance)*/)
 	}
 	r.MinPeriod = fintypes.Period1Day
 	r.KlineRequestRateLimit = time.Second * 30       // note: this rate limit is not tested

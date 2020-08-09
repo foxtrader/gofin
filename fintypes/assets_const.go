@@ -112,6 +112,7 @@ var (
 	PAX  = mustEnrollAsset(AssetSetting{AssetTypeCoin, "Paxos-Standard-Token", "PAX", "USD", true})
 	DAI  = mustEnrollAsset(AssetSetting{AssetTypeCoin, "DAI", "DAI", "USD", true})
 	BUSD = mustEnrollAsset(AssetSetting{AssetTypeCoin, "BinanceUSD", "BUSD", "USD", true})
+	BKRW = mustEnrollAsset(AssetSetting{AssetTypeCoin, "BinanceKRW", "BKRW", "KRW", true})
 
 	// G10 currencies
 	USD = mustEnrollAsset(AssetSetting{AssetTypeFiat, currency.USD.String(), "", "", true}) // US Dollar ($)

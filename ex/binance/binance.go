@@ -38,7 +38,7 @@ type Client struct {
 	inPerp           *futures.Client
 	name             fintypes.Platform
 	supportedPeriods []fintypes.Period
-	config           fintypes.ExProperty
+	property         fintypes.ExProperty
 	marketInfoCache  fintypes.MarketInfo
 	marketInfoUpdate time.Time
 }
@@ -53,11 +53,10 @@ func New(accessKey, secretKey, proxy string, c gtime.Clock, email string) (*Clie
 		PairDelimiterLeftTail: []string{"BULL", "BEAR"},
 		PairNormalOrder:       true,
 		PairUpperCase:         true,
-		MakerFee:              gdecimal.NewFromFloat64(0.001),
-		TakerFee:              gdecimal.NewFromFloat64(0.001),
-		FillRateLimit:         time.Second, // 真实的数值应该是 time.Second / 4 但那样会出现大量奇怪的超时问题，所以临时改成1s
-		KlineRateLimit:        time.Second / 100 * 127,
 	}
+	cc.RateLimits = map[fintypes.ExApi]time.Duration{}
+	cc.RateLimits[fintypes.ExApiGetKline] = time.Second / 100 * 127
+	cc.RateLimits[fintypes.ExApiGetFill] = time.Second // 真实的数值应该是 time.Second / 4 但那样会出现大量奇怪的超时问题，所以临时改成1s
 	cc.Periods = make(map[fintypes.Period]string)
 	cc.Periods[fintypes.Period1Min] = "1m"
 	cc.Periods[fintypes.Period3Min] = "3m"
@@ -90,13 +89,13 @@ func New(accessKey, secretKey, proxy string, c gtime.Clock, email string) (*Clie
 		}
 	}
 	ex.name = fintypes.Binance
-	ex.config = cc
+	ex.property = cc
 	ex.marketInfoUpdate = gtime.ZeroTime
-	ex.config.Email = email
+	ex.property.Email = email
 	if c == nil {
-		ex.config.Clock = gtime.GetSysClock()
+		ex.property.Clock = gtime.GetSysClock()
 	} else {
-		ex.config.Clock = c
+		ex.property.Clock = c
 	}
 
 	return &ex, nil
@@ -117,6 +116,12 @@ func (ex *Client) binanceOrderToApiOrder(accType fintypes.Market, margin fintype
 	res.Margin = margin
 	res.Time = gtime.EpochMillisToTime(src.Time)
 	res.Id = fintypes.NewOrderId(accType, margin, p, gnum.ToString(src.OrderID))
+	if src.StopPrice != "" {
+		res.StopPrice, err = gdecimal.NewFromString(src.StopPrice)
+		if err != nil {
+			return nil, err
+		}
+	}
 	res.Price, err = gdecimal.NewFromString(src.Price)
 	if err != nil {
 		return nil, err
@@ -214,6 +219,12 @@ func (ex *Client) binancePerpOrderToApiOrder(market fintypes.Market, margin fint
 	res.Margin = margin
 	res.Time = gtime.EpochMillisToTime(src.Time)
 	res.Id = fintypes.NewOrderId(market, margin, pair, gnum.ToString(src.OrderID))
+	if src.StopPrice != "" {
+		res.StopPrice, err = gdecimal.NewFromString(src.StopPrice)
+		if err != nil {
+			return nil, err
+		}
+	}
 	res.Price, err = gdecimal.NewFromString(src.Price)
 	if err != nil {
 		return nil, err
@@ -265,7 +276,7 @@ func (ex *Client) binancePerpOrderToApiOrder(market fintypes.Market, margin fint
 }
 
 func (ex *Client) Property() *fintypes.ExProperty {
-	return &ex.config
+	return &ex.property
 }
 
 func (ex *Client) GetMarketInfo() (*fintypes.MarketInfo, error) {
@@ -289,13 +300,19 @@ func (ex *Client) GetMarketInfo() (*fintypes.MarketInfo, error) {
 			continue
 		}
 
-		p, err := fintypes.ParsePairCustom(symbol.Symbol, &ex.config)
+		p, err := fintypes.ParsePairCustom(symbol.Symbol, &ex.property)
 		if err != nil {
 			return nil, err
 		}
 		spotInfo := fintypes.PairInfo{}
+		spotInfo.MakerFee = gdecimal.NewFromFloat64(0.001) // FIXME 目前暂时统一填写0.001，以后可能更改
+		spotInfo.TakerFee = gdecimal.NewFromFloat64(0.001) // FIXME 目前暂时统一填写0.001，以后可能更改
 		spotInfo.Enabled = symbol.IsSpotTradingAllowed
 		spotInfo.MarginCrossEnabled = symbol.IsMarginTradingAllowed // margin shares same PairInfo with spot
+		if spotInfo.MarginCrossEnabled {
+			spotInfo.MinLeverage = 3
+			spotInfo.MaxLeverage = 3
+		}
 		spotInfo.UnitPrecision = symbol.BaseAssetPrecision
 		spotInfo.QuotePrecision = symbol.QuotePrecision
 		for _, filterMap := range symbol.Filters {
@@ -327,11 +344,13 @@ func (ex *Client) GetMarketInfo() (*fintypes.MarketInfo, error) {
 			continue
 		}
 
-		p, err := fintypes.ParsePairCustom(symbol.Symbol, &ex.config)
+		p, err := fintypes.ParsePairCustom(symbol.Symbol, &ex.property)
 		if err != nil {
 			return nil, err
 		}
 		perpInfo := fintypes.PairInfo{}
+		perpInfo.MakerFee = gdecimal.NewFromFloat64(0.001) // FIXME 目前暂时统一填写0.001，以后可能更改
+		perpInfo.TakerFee = gdecimal.NewFromFloat64(0.001) // FIXME 目前暂时统一填写0.001，以后可能更改
 		perpInfo.UnitPrecision = symbol.QuantityPrecision
 		perpInfo.QuotePrecision = symbol.PricePrecision
 		perpInfo.MaintMarginPercent, err = gdecimal.NewFromString(symbol.MaintMarginPercent)
@@ -368,7 +387,7 @@ func (ex *Client) GetMarketInfo() (*fintypes.MarketInfo, error) {
 
 	// cache it
 	ex.marketInfoCache = mi
-	ex.marketInfoUpdate = ex.config.Clock.Now()
+	ex.marketInfoUpdate = ex.property.Clock.Now()
 
 	return &mi, nil
 }
@@ -539,7 +558,7 @@ func (ex *Client) GetDepth(market fintypes.Market, target fintypes.Pair) (*finty
 	}
 
 	res := fintypes.Depth{}
-	res.Time = ex.config.Clock.Now()
+	res.Time = ex.property.Clock.Now()
 	for _, v := range depth.Bids {
 		item := fintypes.OrderBook{}
 		item.Price, err = gdecimal.NewFromString(v.Price)
@@ -580,7 +599,7 @@ func (ex *Client) GetTicks() (map[fintypes.PairM]fintypes.Tick, error) {
 	}
 
 	res := make(map[fintypes.PairM]fintypes.Tick)
-	now := ex.config.Clock.Now()
+	now := ex.property.Clock.Now()
 
 	for _, symbolPrice := range ticks {
 		pair, err := fintypes.ParsePairCustom(symbolPrice.Symbol, ex.Property())
@@ -627,7 +646,7 @@ func (ex *Client) GetKline(market fintypes.Market, target fintypes.Pair, period 
 	}
 
 	if since == nil {
-		now := ex.config.Clock.Now()
+		now := ex.property.Clock.Now()
 		since = &now
 	}
 
@@ -944,7 +963,7 @@ func (ex *Client) Trade(market fintypes.Market, margin fintypes.Margin, leverage
 	}
 
 	// get market info if necessary
-	if ex.marketInfoCache.Infos == nil || ex.config.Clock.Now().Sub(ex.marketInfoUpdate) > gtime.Day {
+	if ex.marketInfoCache.Infos == nil || ex.property.Clock.Now().Sub(ex.marketInfoUpdate) > gtime.Day {
 		_, err := ex.GetMarketInfo() // it will get and cache market info
 		if err != nil {
 			return nil, err
@@ -1089,6 +1108,80 @@ func (ex *Client) GetAllOrders(market fintypes.Market, margin fintypes.Margin, t
 	return r, nil
 }
 
+func (ex *Client) GetOpenOrders(market *fintypes.Market, margin *fintypes.Margin, target *fintypes.Pair) ([]fintypes.Order, error) {
+	if target != nil {
+		if err := target.Verify(); err != nil {
+			return nil, err
+		}
+	}
+
+	var r []fintypes.Order
+
+	// 无杠杆现货
+	if market == nil || *market == fintypes.MarketSpot {
+		if margin == nil || *margin == fintypes.MarginNo {
+			svc := ex.in.NewListOpenOrdersService()
+			if target != nil {
+				svc = svc.Symbol(target.CustomFormat(ex.Property()))
+			}
+			spotOpenOrders, err := svc.Do(context.Background())
+			if err != nil {
+				return nil, err
+			}
+			for _, o := range spotOpenOrders {
+				item, err := ex.binanceOrderToApiOrder(fintypes.MarketSpot, fintypes.MarginNo, o) // 无杠杆现货，可以固化用MarginNo
+				if err != nil {
+					return nil, err
+				}
+				r = append(r, *item)
+			}
+		}
+	}
+
+	// 带杠杆现货
+	if market == nil || *market == fintypes.MarketSpot {
+		if margin == nil || *margin != fintypes.MarginNo {
+			svc := ex.in.NewListMarginOpenOrdersService()
+			if target != nil {
+				svc = svc.Symbol(target.CustomFormat(ex.Property()))
+			}
+			marginOpenOrders, err := svc.Do(context.Background())
+			if err != nil {
+				return nil, err
+			}
+			for _, o := range marginOpenOrders {
+				item, err := ex.binanceOrderToApiOrder(fintypes.MarketSpot, fintypes.MarginCross, o) // FIXME binance现货杠杆现在全部是全仓，所以用MarginCross
+				if err != nil {
+					return nil, err
+				}
+				r = append(r, *item)
+			}
+		}
+	}
+
+	// FIXME 目前的账户获取永续挂单会报错<APIError> code=-2015, msg=Invalid API-key, IP, or permissions for action, request ip: **。**。**。**
+	// 永续合约
+	/*if market == nil || *market == fintypes.MarketPerp {
+		svc := ex.inPerp.NewListOpenOrdersService()
+		if target != nil {
+			svc = svc.Symbol(target.CustomFormat(ex.Property()))
+		}
+		perpOpenOrders, err := svc.Do(context.Background())
+		if err != nil {
+			return nil, err
+		}
+		for _, o := range perpOpenOrders {
+			item, err := ex.binancePerpOrderToApiOrder(fintypes.MarketPerp, fintypes.MarginIsolated, o) // FIXME binance永续现在全部是逐仓，所以用MarginIsolated，这里很可能不对！
+			if err != nil {
+				return nil, err
+			}
+			r = append(r, *item)
+		}
+	}*/
+	return r, nil
+}
+
+/*
 func (ex *Client) GetOpenOrders(market fintypes.Market, margin fintypes.Margin, target fintypes.Pair) ([]fintypes.Order, error) {
 	if err := target.Verify(); err != nil {
 		return nil, err
@@ -1136,7 +1229,7 @@ func (ex *Client) GetOpenOrders(market fintypes.Market, margin fintypes.Margin, 
 		return nil, gerror.Errorf("unsupported Market(%s)", market)
 	}
 	return r, nil
-}
+}*/
 
 func (ex *Client) GetOrder(id fintypes.OrderId) (*fintypes.Order, error) {
 	if err := id.Verify(); err != nil {
@@ -1248,7 +1341,7 @@ func (ex *Client) SubMarketStat(interval time.Duration) (retC chan *MarketStats,
 	// 最近的24小时的"K线"，但是由于起止时间是滑动的，所以只能用作获取实时Tick
 	doneC, stopC, err = binance.WsAllMarketsStatServe(
 		func(event binance.WsAllMarketsStatEvent) {
-			if ex.config.Clock.Now().Sub(lastSnapTime) < interval {
+			if ex.property.Clock.Now().Sub(lastSnapTime) < interval {
 				return
 			}
 
@@ -1332,7 +1425,7 @@ func (ex *Client) SubMarketStat(interval time.Duration) (retC chan *MarketStats,
 				ms.items[pair.SetP(Binance).SetM(MarketSpot)] = item
 			}
 
-			lastSnapTime = ex.config.Clock.Now()
+			lastSnapTime = ex.property.Clock.Now()
 			retC <- ms
 		},
 		func(err error) {

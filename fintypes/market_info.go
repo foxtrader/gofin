@@ -20,10 +20,12 @@ type (
 		QuoteStep      gdecimal.Decimal // quote min movement
 
 		// shared
-		//MinLeverage    int // 最小杠杆倍数
-		//MaxLeverage    int // 最大杠杆倍数
+		MinLeverage           int // 最小杠杆倍数
+		MaxLeverage           int // 最大杠杆倍数
 		MarginIsolatedEnabled bool
 		MarginCrossEnabled    bool
+		MakerFee              gdecimal.Decimal // fee of depth maker, 挂单等吃费率
+		TakerFee              gdecimal.Decimal // fee of depth taker, 主动吃单费率
 
 		// contract only
 		MaintMarginPercent    gdecimal.Decimal
@@ -143,4 +145,22 @@ func (mi *MarketInfo) Verify() error {
 		}
 	}
 	return nil
+}
+
+func (mi *MarketInfo) GetMakerFee(pm PairM) (gdecimal.Decimal, bool) {
+	for k, v := range mi.Infos {
+		if k == pm {
+			return v.MakerFee, true
+		}
+	}
+	return gdecimal.Zero, false
+}
+
+func (mi *MarketInfo) GetTakerFee(pm PairM) (gdecimal.Decimal, bool) {
+	for k, v := range mi.Infos {
+		if k == pm {
+			return v.TakerFee, true
+		}
+	}
+	return gdecimal.Zero, false
 }

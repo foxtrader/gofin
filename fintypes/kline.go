@@ -1129,6 +1129,26 @@ func (k *Kline) SetIndicatorValue(indExpr ta.IndExpr, subItemName string, values
 	return nil
 }
 
+func (k *Kline) Exprs() []string {
+	if k.Len() == 0 {
+		//panic(errors.Errorf("empty k"))
+		return nil
+	}
+
+	r := KInternalExprs
+	if len(k.Items[0].Indicators) == 0 {
+		//panic(errors.Errorf("empty indicators"))
+		return r
+	}
+	for key := range k.Items[0].Indicators {
+		if key == "" {
+			continue
+		}
+		r = append(r, key)
+	}
+	return r
+}
+
 func (k *Kline) IndicatorExps() []string {
 	if k.Len() == 0 {
 		return nil
@@ -1138,6 +1158,9 @@ func (k *Kline) IndicatorExps() []string {
 	}
 	var r []string
 	for key := range k.Items[0].Indicators {
+		if key == "" {
+			continue
+		}
 		r = append(r, key)
 	}
 	return r
@@ -1162,7 +1185,10 @@ func (k *Kline) ExprValues(expr string) ([]float64, error) {
 	// get indicator expression values
 	allExps := k.IndicatorExps()
 	if !gstring.Contains(allExps, expr) {
-		return nil, errors.Errorf("%s indicator expr not found", expr)
+		if k.Len() == 0 {
+			return nil, errors.Errorf("pair %s indicator %s expr not found, kline is empty", k.Pair.String(), expr)
+		}
+		return nil, errors.Errorf("at %s, pair %s indicator %s expr not found, has expressions (%s)", k.FirstTime(gtime.ZeroTime), k.Pair.String(), expr, strings.Join(allExps, ","))
 	}
 	var r []float64
 	for i := 0; i < k.Len(); i++ {
@@ -1187,26 +1213,6 @@ func (k *Kline) LastExprValue(expr string) (float64, error) {
 		return 0.0, errors.Errorf(`indicator "%s" of tail bar not exist`, expr)
 	}
 	return indVal, nil
-}
-
-func (k *Kline) Exprs() []string {
-	if k.Len() == 0 {
-		//panic(errors.Errorf("empty k"))
-		return nil
-	}
-
-	r := KInternalExprs
-	if len(k.Items[0].Indicators) == 0 {
-		//panic(errors.Errorf("empty indicators"))
-		return r
-	}
-	for key := range k.Items[0].Indicators {
-		if key == "" {
-			continue
-		}
-		r = append(r, key)
-	}
-	return r
 }
 
 func (k *Kline) LastExprs() []string {

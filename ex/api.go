@@ -53,7 +53,7 @@ type (
 		GetAllOrders(market fintypes.Market, margin fintypes.Margin, target fintypes.Pair) ([]fintypes.Order, error)
 
 		// get all my unfinished orders' info
-		GetOpenOrders(market fintypes.Market, margin fintypes.Margin, target fintypes.Pair) ([]fintypes.Order, error)
+		GetOpenOrders(market *fintypes.Market, margin *fintypes.Margin, target *fintypes.Pair) ([]fintypes.Order, error)
 
 		// get order info by id
 		GetOrder(id fintypes.OrderId) (*fintypes.Order, error)

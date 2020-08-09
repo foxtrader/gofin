@@ -5,36 +5,37 @@ import (
 	"errors"
 	"fmt"
 	"github.com/foxtrader/gofin/fintypes"
-	fintypes2 "github.com/foxtrader/gofin/fintypes"
+	"github.com/shawnwyckoff/gopkg/apputil/gerror"
 	"github.com/shawnwyckoff/gopkg/net/ghttp"
 	"github.com/shawnwyckoff/gopkg/sys/gtime"
 	"log"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/shawnwyckoff/gopkg/apputil/gparam"
 	"github.com/shawnwyckoff/gopkg/container/gdecimal"
 	"github.com/shawnwyckoff/gopkg/net/ghttputils"
-	"github.com/shawnwyckoff/gopkg/utils"
 )
+
+/**
+docs: https://huobiapi.github.io/docs/spot/v1/cn/
+*/
 
 type Client struct {
 	config     *fintypes.ExProperty
 	httpClient *http.Client
-	baseUrl    string
-	accountId  string
 	accessKey  string
 	secretKey  string
+	proxy      string
 }
 
-func New(apiKey, secretKey, proxy string) (*Client, error) {
+func New(apiKey, secretKey, proxy string, c gtime.Clock, email string) (*Client, error) {
 	hb := &Client{}
 	hb.config = &fintypes.ExProperty{
 		Name:                   fintypes.Huobi,
-		Email:                  "",
+		Email:                  email,
 		MaxDepth:               150,
 		PairDelimiter:          "",
 		PairDelimiterLeftTail:  nil,
@@ -42,36 +43,26 @@ func New(apiKey, secretKey, proxy string) (*Client, error) {
 		PairNormalOrder:        true,
 		PairUpperCase:          false,
 		PairsSeparator:         ",",
-		Periods: map[fintypes.Period]string{
-			fintypes.Period1Min: "1min", fintypes.Period5Min: "5min", fintypes.Period15Min: "15min",
+		Periods: map[fintypes.Period]string{fintypes.Period1Min: "1min", fintypes.Period5Min: "5min", fintypes.Period15Min: "15min",
 			fintypes.Period30Min: "30min", fintypes.Period1Hour: "60min", fintypes.Period4Hour: "4hour",
 			fintypes.Period1Day: "1day", fintypes.Period1Week: "1week", fintypes.Period1MonthFUZZY: "1mon",
 			fintypes.Period1YearFUZZY: "1year",
 		},
 		OrderStatus: map[fintypes.OrderStatus]string{
-			fintypes.OrderStatusNew: "submitted", fintypes.OrderStatusPartiallyFilled: "partial-filled",
-			fintypes.OrderStatusFilled:   "filled",
-			fintypes.OrderStatusCanceled: "canceled", fintypes.OrderStatusCanceling: "canceling",
+			fintypes.OrderStatusNew:             "submitted",
+			fintypes.OrderStatusPartiallyFilled: "partial-filled", fintypes.OrderStatusFilled: "filled",
+			fintypes.OrderStatusPartiallyCanceled: "partial-canceled", fintypes.OrderStatusCanceled: "canceled", fintypes.OrderStatusCanceling: "canceling",
 		},
-		OrderSides: map[TradeTypeSide]string{
-			TradeTypeSideLimitSell:  "sell-limit",
-			TradeTypeSideMarketSell: "sell-market",
-			TradeTypeSideLimitBuy:   "buy-limit",
-			TradeTypeSideMarketBuy:  "buy-market",
+		RateLimits: map[fintypes.ExApi]time.Duration{
+			fintypes.ExApiGetKline: time.Second / 10,
+			fintypes.ExApiGetFill:  time.Second / 10,
 		},
-		RateLimit:      time.Second / 10,
-		FillRateLimit:  time.Second / 10,
-		KlineRateLimit: time.Second / 10,
-		MakerFee:       gdecimal.Zero,
-		TakerFee:       gdecimal.Zero,
-		WithdrawalFees: map[string]gdecimal.Decimal{},
 		MarketEnabled: map[fintypes.Market]bool{
 			fintypes.MarketSpot:   true,
-			MarketMargin:          true,
 			fintypes.MarketFuture: true,
 			fintypes.MarketPerp:   true,
 		},
-		Clock:          nil,
+		Clock:          c,
 		IsBackTestEx:   false,
 		TradeBeginTime: time.Date(2017, 10, 1, 20, 20, 20, 20, gtime.TimeZoneAsiaShanghai),
 	}
@@ -82,6 +73,7 @@ func New(apiKey, secretKey, proxy string) (*Client, error) {
 	}
 	hb.accessKey = apiKey
 	hb.secretKey = secretKey
+	hb.proxy = proxy
 	return hb, nil
 }
 
@@ -91,144 +83,213 @@ func (hb *Client) Config() *fintypes.ExProperty {
 }
 
 // get all supported pairs, min trade amount
-func (hb *Client) GetMarketInfo(market fintypes.Market) (*fintypes.MarketInfo, error) {
-	if market != fintypes.MarketSpot && market != MarketMargin {
-		return nil, errors.New("Access denied")
-	}
-	hb.setBaseUrl(market)
-	url := hb.baseUrl + ApiPathMap[fintypes.MarketSpot][ApiUrlMarketInfo]
-	respmap, err := ghttputils.HttpGet(hb.httpClient, url)
-	if err != nil {
-		return nil, err
-	}
-	data, ok := respmap["data"].([]interface{})
-	if !ok {
-		return nil, errors.New("response format error")
-	}
-	marketInfo := new(fintypes.MarketInfo)
-	marketInfo.Infos = make(map[PairExt]fintypes.PairInfo)
-	pairs := make(map[PairExt]*fintypes.PairInfo)
-	for _, v := range data {
-		_sym := v.(map[string]interface{})
-		pairKey := _sym["symbol"].(string)
-		state := _sym["state"].(string)
-		amountPrecision := (_sym["amount-precision"]).(float64)
-		pricePrecision := (_sym["price-precision"]).(float64)
-		pair := new(fintypes.PairInfo)
-		pair.Enabled = "online" == state
-		pair.UnitPrecision = int(amountPrecision)
-		pair.QuotePrecision = int(pricePrecision)
-		pair.LotMin = gdecimal.NewFromFloat64((_sym["min-order-amt"]).(float64))
-		pair.LotStep = gdecimal.NewFromFloat64((_sym["min-order-amt"]).(float64))
-		pair.MaintMarginPercent = gdecimal.Zero
-		pair.RequiredMarginPercent = gdecimal.Zero
-		tpair, _ := fintypes.ParsePairCustom(pairKey, hb.config)
-		pairExt := tpair.SetM(market)
-		pairs[pairExt] = pair
-	}
-	for k, v := range pairs {
-		marketInfo.Infos[k] = *v
+func (hb *Client) GetMarketInfo() (*fintypes.MarketInfo, error) {
+	res := &fintypes.MarketInfo{Infos: map[fintypes.PairM]fintypes.PairInfo{}}
+
+	for market, enabled := range hb.config.MarketEnabled {
+		if !enabled {
+			continue
+		}
+		baseUrl, ok := apiPathMap[market][apiUrlBase]
+		if !ok {
+			return nil, gerror.New("apiUrlBase for %s not found", market)
+		}
+		subUrl, ok := apiPathMap[market][apiUrlMarketInfo]
+		if !ok {
+			return nil, gerror.New("apiUrlMarketInfo for %s not found", market)
+		}
+		reqUrl := baseUrl + subUrl
+		respMap, err := ghttp.GetMap(reqUrl, hb.proxy, time.Minute)
+		if err != nil {
+			return nil, err
+		}
+		if respMap["status"].(string) != "ok" {
+			return nil, errors.New(respMap["err-code"].(string))
+		}
+
+		data, ok := respMap["data"].([]interface{})
+		if !ok {
+			return nil, errors.New("nil data in map")
+		}
+		for _, v := range data {
+			vMap := v.(map[string]interface{})
+			unitSym := vMap["base-currency"].(string)
+			quoteSym := vMap["quote-currency"].(string)
+			state := vMap["state"].(string)
+			amountPrecision := (vMap["amount-precision"]).(int)
+			pricePrecision := (vMap["price-precision"]).(int)
+			pairInfo := fintypes.PairInfo{}
+			pairInfo.Enabled = "online" == state
+			pairInfo.UnitPrecision = amountPrecision
+			pairInfo.QuotePrecision = pricePrecision
+			pairInfo.UnitMin = gdecimal.NewFromFloat64((vMap["min-order-amt"]).(float64))
+			pairInfo.UnitStep = pairInfo.UnitMin
+			res.Infos[fintypes.NewPair(unitSym, quoteSym).SetM(market)] = pairInfo
+		}
 	}
 
-	return marketInfo, nil
+	return res, nil
+}
+
+func parseMarketMargin(s string) (fintypes.Market, fintypes.Margin, bool) {
+	switch s {
+	case "spot":
+		return fintypes.MarketSpot, fintypes.MarginNo, true
+	case "margin":
+		return fintypes.MarketSpot, fintypes.MarginIsolated, true
+	case "super-margin":
+		return fintypes.MarketSpot, fintypes.MarginCross, true
+	default:
+		return fintypes.MarketError, fintypes.MarginError, false
+	}
+}
+
+type accId struct {
+	market fintypes.Market
+	margin fintypes.Margin
+	id     string
+}
+
+func (hb *Client) getAccountIds() ([]accId, error) {
+	var ids []accId
+	for market, enabled := range hb.config.MarketEnabled {
+		if !enabled {
+			continue
+		}
+		baseUrl, ok := apiPathMap[market][apiUrlBase]
+		if !ok {
+			return nil, gerror.New("apiUrlBase for %s not found", market)
+		}
+		subUrl, ok := apiPathMap[market][apiUrlMarketInfo]
+		if !ok {
+			return nil, gerror.New("apiUrlMarketInfo for %s not found", market)
+		}
+		params := &url.Values{}
+		hb.signForm(params, "GET", baseUrl, subUrl)
+		reqUrl := baseUrl + subUrl + "?" + params.Encode()
+		respMap, err := ghttp.GetMap(reqUrl, hb.proxy, time.Minute)
+		if err != nil {
+			return nil, err
+		}
+		if respMap["status"].(string) != "ok" {
+			return nil, errors.New(respMap["err-code"].(string))
+		}
+
+		data := respMap["data"].([]interface{})
+		for _, v := range data {
+			vMap := v.(map[string]interface{})
+			market, margin, ok := parseMarketMargin(vMap["type"].(string))
+			if !ok {
+				// 未识别的type，越过
+				continue
+			}
+			item := accId{
+				market: market,
+				margin: margin,
+				id:     vMap["id"].(string),
+			}
+			ids = append(ids, item)
+		}
+	}
+
+	return ids, nil
+}
+
+func getAccId(ids []accId, market fintypes.Market, margin fintypes.Margin) (string, bool) {
+	for _, v := range ids {
+		if v.market == market && v.margin == margin {
+			return v.id, true
+		}
+	}
+	return "", false
 }
 
 // get account info includes all currency balances
-func (hb *Client) GetAccount(market fintypes.Market) (*fintypes.Account, error) {
-	acc := new(fintypes.Account)
-	hb.setBaseUrl(market)
-	if fintypes.MarketSpot == market || MarketMargin == market {
-		err0 := hb.setNewHuobiId(market)
-		if nil != err0 {
-			return nil, err0
-		}
-		path := fmt.Sprintf(ApiPathMap[market][ApiUrlAccount], hb.accountId)
-		params := &url.Values{}
-		params.Set("accountId-id", hb.accountId)
-		hb.buildPostForm("GET", path, params)
+func (hb *Client) GetAccount() (*fintypes.Account, error) {
+	ids, err := hb.getAccountIds()
+	if err != nil {
+		return nil, err
+	}
 
-		urlStr := hb.baseUrl + path + "?" + params.Encode()
-		respmap, err := ghttputils.HttpGet(hb.httpClient, urlStr)
+	res := fintypes.NewEmptyAccount()
+
+	accId, ok := getAccId(ids, fintypes.MarketSpot, fintypes.MarginNo)
+	if !ok {
+		return nil, gerror.New("MarketSpot MarginNo account id not found")
+	}
+	baseUrl, ok := apiPathMap[fintypes.MarketSpot][apiUrlBase]
+	if !ok {
+		return nil, gerror.New("apiUrlBase not found")
+	}
+	subUrl, ok := apiPathMap[fintypes.MarketSpot][apiUrlAccountBalance]
+	if !ok {
+		return nil, gerror.New("apiUrlAccountIds not found")
+	}
+	params := &url.Values{}
+	params.Set("accountId-id", accId)
+	hb.signForm(params, "GET", baseUrl, subUrl)
+	reqUrl := baseUrl + subUrl + "?" + params.Encode()
+	respMap, err := ghttp.GetMap(reqUrl, hb.proxy, time.Minute)
+	if err != nil {
+		return nil, err
+	}
+	if respMap["status"].(string) != "ok" {
+		return nil, gerror.Errorf("result status %s != ok", respMap["err-code"].(string))
+	}
+	dataMap := respMap["data"].(map[string]interface{})
+	if dataMap["state"].(string) != "working" {
+		return nil, gerror.Errorf("data state %s != working", dataMap["state"].(string))
+	}
+
+	list := dataMap["list"].([]interface{})
+
+	for _, v := range list {
+		vMap := v.(map[string]interface{})
+		currencyStr := vMap["currency"].(string)
+		typeStr := vMap["type"].(string)
+		balance, err := gdecimal.NewFromString(vMap["balance"].(string))
 		if err != nil {
 			return nil, err
 		}
 
-		if respmap["status"].(string) != "ok" {
-			return nil, errors.New(respmap["err-code"].(string))
+		assetProperty := fintypes.AssetProperty{}
+		assetProperty.Market = fintypes.MarketSpot
+		assetProperty.Margin = fintypes.MarginNo
+		assetProperty.Asset = strings.ToUpper(currencyStr)
+		switch typeStr {
+		case "trade":
+			res.SetFreeAmount(assetProperty, balance)
+		case "frozen":
+			res.SetLockedAmount(assetProperty, balance)
+		default:
+			return nil, gerror.Errorf("invalid typeStr %s", typeStr)
 		}
+	}
 
-		datamap := respmap["data"].(map[string]interface{})
-		if datamap["state"].(string) != "working" {
-			return nil, errors.New(datamap["state"].(string))
-		}
-
-		list := datamap["list"].([]interface{})
-
-		tmap := make(map[string]SpotBalance)
-		accPot := make(map[string]*SpotBalance)
-		for _, v := range list {
-			balancemap := v.(map[string]interface{})
-			currencySymbol := balancemap["currency"].(string)
-			typeStr := balancemap["type"].(string)
-			balance, _ := strconv.ParseFloat(balancemap["balance"].(string), 64)
-			if nil == accPot[currencySymbol] {
-				accPot[currencySymbol] = new(SpotBalance)
-			}
-
-			switch typeStr {
-			case "trade":
-				accPot[currencySymbol].Free = gdecimal.NewFromFloat64(balance)
-			case "frozen":
-				accPot[currencySymbol].Locked = gdecimal.NewFromFloat64(balance)
-			}
-			accPot[currencySymbol].Borrowed, accPot[currencySymbol].Interest = gdecimal.Zero, gdecimal.Zero
-		}
-		for k, v := range accPot {
-			tmap[k] = *v
-		}
-		if string(fintypes.MarketSpot) == datamap["type"].(string) {
-			acc.Spot = tmap
-		} else if string(MarketMargin) == datamap["type"].(string) {
-			acc.Margin = tmap
-		} else {
-		}
-	} else if fintypes.MarketFuture == market || fintypes.MarketPerp == market {
-		cpath := ApiPathMap[market][ApiUrlAccount]
-		var cdata []struct {
+	/*
+		baseUrl := apiPathMap[fintypes.MarketFuture][apiUrlAccountBalance]
+		var resp []struct {
 			Symbol            string  `json:"symbol"`
 			MarginBalance     float64 `json:"margin_balance"`
 			MarginPosition    float64 `json:"margin_position"`
 			ProfitUnreal      float64 `json:"profit_unreal"`
 			WithdrawAvailable float64 `json:"withdraw_available"`
 		}
-
-		cparams := &url.Values{}
-		cerr := hb.doRequest(cpath, cparams, &cdata)
-		if cerr != nil {
-			return nil, cerr
+		params := &url.Values{}
+		if err := hb.doRequest(baseUrl, params, &resp); err != nil {
+			return nil, err
 		}
-
-		cmap := make(map[string]ContractBalance)
-		for _, sub := range cdata {
-			cmap[sub.Symbol] = ContractBalance{
-				InitialMargin:         gdecimal.Zero,
-				MaintMargin:           gdecimal.Zero,
-				MaxWithdrawAmount:     gdecimal.NewFromFloat64(sub.WithdrawAvailable),
-				PositionInitialMargin: gdecimal.NewFromFloat64(sub.MarginPosition),
-				UnrealizedProfit:      gdecimal.NewFromFloat64(sub.ProfitUnreal),
-				WalletBalance:         gdecimal.NewFromFloat64(sub.MarginBalance),
+		for _, v := range resp {
+			fintypes.AssetAmount{
+				MaxWithdrawAmount:     gdecimal.NewFromFloat64(v.WithdrawAvailable),
+				PositionInitialMargin: gdecimal.NewFromFloat64(v.MarginPosition),
+				UnrealizedProfit:      gdecimal.NewFromFloat64(v.ProfitUnreal),
+				WalletBalance:         gdecimal.NewFromFloat64(v.MarginBalance),
 			}
 		}
-		if fintypes.MarketFuture == market {
-			acc.Future = cmap
-		} else if fintypes.MarketPerp == market {
-			acc.Perp = cmap
-		} else {
-		}
-	} else {
-	}
+	*/
 
-	return acc, nil
+	return res, nil
 }
 
 // get open order books
@@ -238,6 +299,7 @@ func (hb *Client) GetDepth(market fintypes.Market, pair fintypes.Pair, limit int
 	if fintypes.MarketSpot == market || MarketMargin == market {
 		n := 5
 		if limit <= 5 {
+
 			n = 5
 		} else if limit <= 10 {
 			n = 10
@@ -284,7 +346,7 @@ func (hb *Client) GetDepth(market fintypes.Market, pair fintypes.Pair, limit int
 }
 
 // get all ticks
-func (hb *Client) GetTicks() (map[PairExt]fintypes.Tick, error) {
+func (hb *Client) GetTicks() (map[fintypes.PairM]fintypes.Tick, error) {
 	hb.setBaseUrl(market)
 	url := hb.baseUrl + "/market/tickers"
 	respmap, err := ghttputils.HttpGet(hb.httpClient, url)
@@ -804,49 +866,15 @@ func (hb *Client) parseDepthData(tick map[string]interface{}, size int) *fintype
 	return depth
 }
 
-func (hb *Client) GetAccountInfo(market fintypes.Market) (AccountInfo, error) {
-	if market != fintypes.MarketSpot && market != MarketMargin {
-		return AccountInfo{}, errors.New("Access denied")
-	}
-	path := ApiPathMap[market][ApiUrlAccountInfo]
-	hb.setBaseUrl(market)
-	var info AccountInfo
-
-	params := &url.Values{}
-	hb.buildPostForm("GET", path, params)
-	urlStr := hb.baseUrl + path + "?" + params.Encode()
-	respmap, err := ghttputils.HttpGet(hb.httpClient, urlStr)
-	if err != nil {
-		return AccountInfo{}, err
-	}
-	if respmap["status"].(string) != "ok" {
-		return AccountInfo{}, errors.New(respmap["err-code"].(string))
-	}
-
-	data := respmap["data"].([]interface{})
-	for _, v := range data {
-		iddata := v.(map[string]interface{})
-		if iddata["type"].(string) == string(market) {
-			info.Id = fmt.Sprintf("%.0f", iddata["id"])
-			info.Type = string(market)
-			info.State = iddata["state"].(string)
-			break
-		}
-	}
-
-	return info, nil
-}
-
-func (hb *Client) buildPostForm(reqMethod, path string, postForm *url.Values) error {
+func (hb *Client) signForm(postForm *url.Values, reqMethod, baseUrl, path string) error {
 	postForm.Set("AccessKeyId", hb.accessKey)
 	postForm.Set("SignatureMethod", "HmacSHA256")
 	postForm.Set("SignatureVersion", "2")
 	postForm.Set("Timestamp", time.Now().UTC().Format("2006-01-02T15:04:05"))
-	domain := strings.Replace(hb.baseUrl, "https://", "", len(hb.baseUrl))
+	domain := strings.Replace(baseUrl, "https://", "", len(baseUrl))
 	payload := fmt.Sprintf("%s\n%s\n%s\n%s", reqMethod, domain, path, postForm.Encode())
 	sign, _ := gparam.GetParamHmacSHA256Base64Sign(hb.secretKey, payload)
 	postForm.Set("Signature", sign)
-
 	return nil
 }
 
@@ -980,29 +1008,6 @@ func (hb *Client) getContractOrders(market fintypes.Market, queryparams QueryOrd
 	}
 
 	return orders, nil
-}
-
-func (hb *Client) setNewHuobiId(market fintypes.Market) error {
-	accinfo, err := hb.GetAccountInfo(market)
-	if err != nil {
-		hb.accountId = ""
-		return errors.New("accountid is nil")
-	} else {
-		hb.accountId = accinfo.Id
-	}
-
-	return nil
-}
-
-func (hb *Client) setBaseUrl(market fintypes.Market) {
-	switch market {
-	case fintypes.MarketSpot, MarketMargin:
-		hb.baseUrl = ApiPathMap[fintypes.MarketSpot][ApiUrlBase]
-	case fintypes.MarketFuture:
-		hb.baseUrl = ApiPathMap[fintypes.MarketFuture][ApiUrlBase]
-	case fintypes.MarketPerp:
-		hb.baseUrl = ApiPathMap[fintypes.MarketPerp][ApiUrlBase]
-	}
 }
 
 func (hb *Client) doRequest(path string, params *url.Values, data interface{}) error {

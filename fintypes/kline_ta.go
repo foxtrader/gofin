@@ -396,6 +396,88 @@ func (kta *KTA) K() *Kline {
 	return (*Kline)(kta)
 }
 
+// 从前往后找放量上涨
+// pricePercent 价格上涨幅度
+// volumeCmpDays 成交量大于之前多少天
+// lowGt low价必须大于这个值，相当于给出一条最低线，忽略低于这条线的大阳线
+func (kta *KTA) FirstHeavyVolumePriceRose(gt time.Time, pricePercent float64, volumeCmpDays int, lowGt *float64) (Bar, bool) {
+	// 第一根Bar被忽略，所以减2
+	for k := volumeCmpDays; k < kta.K().Len(); k++ {
+		v := kta.K().Items[k]
+		if v.T.Before(gt) || v.T.Equal(gt) {
+			continue
+		}
+
+		// 必须是阳线
+		if v.C.LessThanOrEqual(v.O) {
+			continue
+		}
+
+		// 如果lowGt存在，则需要检测这个条件
+		if lowGt != nil && v.L.Float64() <= *lowGt {
+			continue
+		}
+
+		// 检查价格
+		upPercent := (v.C.Float64() - v.O.Float64()) / v.O.Float64()
+		if upPercent < pricePercent {
+			continue
+		}
+
+		// 检查成交量
+		volToday := v.V.Float64()
+		volLastNDays := 0.0
+		for n := k - 1; n > (k-1-volumeCmpDays) && n >= 0; n-- {
+			volLastNDays += kta.Items[n].V.Float64()
+		}
+		if volToday <= volLastNDays {
+			continue
+		}
+
+		return v, true
+	}
+
+	return Bar{}, false
+}
+
+// 从后往前找放量上涨
+// pricePercent 价格上涨幅度
+// volumeCmpDays 成交量大于之前多少天
+func (kta *KTA) LastHeavyVolumePriceRose(gt time.Time, pricePercent float64, volumeCmpDays int) (Bar, bool) {
+	// 最后一根Bar被忽略，所以减2
+	for k := kta.K().Len() - 2; k >= 0; k-- {
+		v := kta.K().Items[k]
+		if v.T.Before(gt) {
+			break
+		}
+
+		// 必须是阳线
+		if v.C.LessThanOrEqual(v.O) {
+			continue
+		}
+
+		// 检查价格
+		upPercent := (v.C.Float64() - v.O.Float64()) / v.O.Float64()
+		if upPercent < pricePercent {
+			continue
+		}
+
+		// 检查成交量
+		volToday := v.V.Float64()
+		volLastNDays := 0.0
+		for n := k - 1; n > (k-1-volumeCmpDays) && n >= 0; n-- {
+			volLastNDays += kta.Items[n].V.Float64()
+		}
+		if volToday <= volLastNDays {
+			continue
+		}
+
+		return v, true
+	}
+
+	return Bar{}, false
+}
+
 func (kta *KTA) Break(breakUp bool, beginInclude bool, begin time.Time, endInclude bool, end time.Time, priceInclude bool, price gdecimal.Decimal) (time.Time, bool) {
 	subK := kta.K().SliceBetweenEqual(begin, end)
 	if !beginInclude {
@@ -543,10 +625,12 @@ func (kta *KTA) LastDirs(exp string, directionSize int, gt *time.Time) ([]DirWT,
 	}
 	//fmt.Println("kta.K.LastTime", kta.K().LastTime(gtime.ZeroTime), len(kta.K().Items[kta.K().Len()-1].indicators))
 	tmp := kta.K()
+	//fmt.Println("1tmp.LastTime", tmp.LastTime(gtime.ZeroTime), tmp.Exprs())
 	if gt != nil && gt.After(kta.K().FirstTime(gtime.ZeroTime)) {
 		tmp = kta.K().SliceAfter(*gt)
+		//fmt.Println("gt", gt.String())
 	}
-	//fmt.Println("tmp.LastTime", tmp.LastTime(gtime.ZeroTime), len(tmp.Items[tmp.Len()-1].indicators))
+	//fmt.Println("2tmp.LastTime", tmp.LastTime(gtime.ZeroTime), tmp.Exprs())
 
 	evs, err := tmp.ExprValues(exp)
 	if err != nil {
