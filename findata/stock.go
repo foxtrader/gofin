@@ -11,7 +11,6 @@ import (
 	"github.com/shawnwyckoff/gopkg/net/ghtml"
 	"github.com/shawnwyckoff/gopkg/net/ghttp"
 	"github.com/shawnwyckoff/gopkg/sys/gtime"
-	"github.com/tealeg/xlsx"
 	"net/http"
 	"regexp"
 	"sort"
@@ -159,6 +158,8 @@ func StockExchangeList(exchange fintypes.Platform) ([]fintypes.PairP, error) {
 		// backup data source:
 		// http://quote.eastmoney.com/stocklist.html
 
+		// 下面这段代码因为excel库升级接口不兼容暂时不可用
+		/*
 		uris := []string{
 			"http://www.szse.cn/api/report/ShowReport?SHOWTYPE=xlsx&CATALOGID=1110&TABKEY=tab1",
 			"http://www.szse.cn/api/report/ShowReport?SHOWTYPE=xlsx&CATALOGID=1110&TABKEY=tab2",
@@ -191,9 +192,9 @@ func StockExchangeList(exchange fintypes.Platform) ([]fintypes.PairP, error) {
 				if symbol == "" {
 					continue
 				}
-				r = append(r, fintypes.NewPair(symbol, "CNY").SetP(exchange) /*NewPair2(NewStock(symbol, PLTSzse), exchange.Info().DefaultQuoteFiat)*/)
+				r = append(r, fintypes.NewPair(symbol, "CNY").SetP(exchange) /*NewPair2(NewStock(symbol, PLTSzse), exchange.Info().DefaultQuoteFiat)*//*)
 			}
-		}
+		}*/
 		return r, nil
 	} else if exchange == fintypes.Hkex {
 		//uri := "https://www.hkex.com.hk/-/media/HKEX-Market/Services/Trading/Securities/Securities-Lists/Securities-Using-Standard-Transfer-Form-(including-GEM)-By-English-Stock-Short-Name-Order/englishstk_c.xls"

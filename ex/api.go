@@ -3,7 +3,6 @@ package ex
 import (
 	"github.com/foxtrader/gofin/ex/binance"
 	"github.com/foxtrader/gofin/fintypes"
-	fintypes2 "github.com/foxtrader/gofin/fintypes"
 	"github.com/shawnwyckoff/gopkg/apputil/gerror"
 	"github.com/shawnwyckoff/gopkg/container/gdecimal"
 	"github.com/shawnwyckoff/gopkg/sys/gtime"
@@ -19,7 +18,7 @@ type (
 		Property() *fintypes.ExProperty
 
 		// get all supported pairs, min trade amount...
-		GetMarketInfo() (*fintypes.MarketInfo, error)
+		GetMarketInfo(ignorePairsNotFound bool) (*fintypes.MarketInfo, error)
 
 		// get account info includes all currency balances.
 		GetAccount() (*fintypes.Account, error)
@@ -28,10 +27,10 @@ type (
 		GetDepth(market fintypes.Market, target fintypes.Pair) (*fintypes.Depth, error)
 
 		// get candle bars
-		GetKline(market fintypes.Market, target fintypes.Pair, period fintypes.Period, since *time.Time) (*fintypes2.Kline, error)
+		GetKline(market fintypes.Market, target fintypes.Pair, period fintypes.Period, since *time.Time) (*fintypes.Kline, error)
 
 		// get all ticks
-		GetTicks() (map[fintypes.PairM]fintypes.Tick, error)
+		GetTicks(ignorePairsNotFound bool) (map[fintypes.PairM]fintypes.Tick, error)
 
 		// margin account borrowable
 		GetBorrowable(margin fintypes.Margin, asset string) (gdecimal.Decimal, error)

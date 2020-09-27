@@ -19,6 +19,7 @@ NOW(即时)
 
 import (
 	"context"
+	"fmt"
 	"github.com/adshao/go-binance"
 	"github.com/adshao/go-binance/futures"
 	"github.com/foxtrader/gofin/fintypes"
@@ -279,7 +280,7 @@ func (ex *Client) Property() *fintypes.ExProperty {
 	return &ex.property
 }
 
-func (ex *Client) GetMarketInfo() (*fintypes.MarketInfo, error) {
+func (ex *Client) GetMarketInfo(ignorePairsNotFound bool) (*fintypes.MarketInfo, error) {
 	mi := fintypes.MarketInfo{Infos: map[fintypes.PairM]fintypes.PairInfo{}}
 
 	exInfo, err := ex.in.NewExchangeInfoService().Do(context.Background())
@@ -302,7 +303,11 @@ func (ex *Client) GetMarketInfo() (*fintypes.MarketInfo, error) {
 
 		p, err := fintypes.ParsePairCustom(symbol.Symbol, &ex.property)
 		if err != nil {
-			return nil, err
+			if ignorePairsNotFound {
+				continue
+			} else {
+				return nil, err
+			}
 		}
 		spotInfo := fintypes.PairInfo{}
 		spotInfo.MakerFee = gdecimal.NewFromFloat64(0.001) // FIXME 目前暂时统一填写0.001，以后可能更改
@@ -346,7 +351,11 @@ func (ex *Client) GetMarketInfo() (*fintypes.MarketInfo, error) {
 
 		p, err := fintypes.ParsePairCustom(symbol.Symbol, &ex.property)
 		if err != nil {
-			return nil, err
+			if ignorePairsNotFound {
+				continue
+			} else {
+				return nil, err
+			}
 		}
 		perpInfo := fintypes.PairInfo{}
 		perpInfo.MakerFee = gdecimal.NewFromFloat64(0.001) // FIXME 目前暂时统一填写0.001，以后可能更改
@@ -587,7 +596,7 @@ func (ex *Client) GetDepth(market fintypes.Market, target fintypes.Pair) (*finty
 	return &res, nil
 }
 
-func (ex *Client) GetTicks() (map[fintypes.PairM]fintypes.Tick, error) {
+func (ex *Client) GetTicks(ignorePairsNotFound bool) (map[fintypes.PairM]fintypes.Tick, error) {
 	ticks, err := ex.in.NewListPricesService().Do(context.Background())
 	if err != nil {
 		return nil, err
@@ -604,7 +613,11 @@ func (ex *Client) GetTicks() (map[fintypes.PairM]fintypes.Tick, error) {
 	for _, symbolPrice := range ticks {
 		pair, err := fintypes.ParsePairCustom(symbolPrice.Symbol, ex.Property())
 		if err != nil {
-			return nil, err
+			if ignorePairsNotFound {
+				continue
+			} else {
+				return nil, err
+			}
 		}
 		item := fintypes.Tick{}
 		item.Time = now
@@ -618,7 +631,11 @@ func (ex *Client) GetTicks() (map[fintypes.PairM]fintypes.Tick, error) {
 	for _, symbolPrice := range ticksPerp {
 		pair, err := fintypes.ParsePairCustom(symbolPrice.Symbol, ex.Property())
 		if err != nil {
-			return nil, err
+			if ignorePairsNotFound {
+				continue
+			} else {
+				return nil, err
+			}
 		}
 		item := fintypes.Tick{}
 		item.Time = now
@@ -964,7 +981,7 @@ func (ex *Client) Trade(market fintypes.Market, margin fintypes.Margin, leverage
 
 	// get market info if necessary
 	if ex.marketInfoCache.Infos == nil || ex.property.Clock.Now().Sub(ex.marketInfoUpdate) > gtime.Day {
-		_, err := ex.GetMarketInfo() // it will get and cache market info
+		_, err := ex.GetMarketInfo(true) // it will get and cache market info
 		if err != nil {
 			return nil, err
 		}
@@ -1626,4 +1643,14 @@ func (ex *Client) GetAggFills(pair fintypes.Pair, option *fintypes.FillOption) (
 		r = append(r, item)
 	}
 	return r, nil
+}
+
+func (ex *Client) GetDepositAddresses() (map[string]string, error) {
+	address, err := ex.in.NewGetDepositAddressService().Asset("ETH").Do(context.Background())
+	if err != nil {
+		fmt.Println(err)
+		return nil, err
+	}
+	fmt.Println(address)
+	return nil, nil
 }

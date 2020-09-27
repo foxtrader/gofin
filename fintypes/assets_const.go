@@ -46,7 +46,7 @@ func enrollAsset(setting AssetSetting) (Asset, error) {
 		case "XPT":
 			asset = newMetal("XPT") // platinum
 		case "XPD":
-			asset = newMetal("XPD") // Palladium
+			asset = newMetal("XPD") // palladium
 		default:
 			return AssetNil, gerror.Errorf("unknown metal %s", setting.Name)
 		}
@@ -113,6 +113,7 @@ var (
 	DAI  = mustEnrollAsset(AssetSetting{AssetTypeCoin, "DAI", "DAI", "USD", true})
 	BUSD = mustEnrollAsset(AssetSetting{AssetTypeCoin, "BinanceUSD", "BUSD", "USD", true})
 	BKRW = mustEnrollAsset(AssetSetting{AssetTypeCoin, "BinanceKRW", "BKRW", "KRW", true})
+	BIDR = mustEnrollAsset(AssetSetting{AssetTypeCoin, "BinanceIDR", "BIDR", "IDR", true})
 
 	// G10 currencies
 	USD = mustEnrollAsset(AssetSetting{AssetTypeFiat, currency.USD.String(), "", "", true}) // US Dollar ($)
@@ -128,6 +129,7 @@ var (
 
 	//  non-famous quote currencies
 	NGN = mustEnrollAsset(AssetSetting{AssetTypeFiat, "NGN", "", "", true}) // Nigerian Naira (NGN)
+	TRY = mustEnrollAsset(AssetSetting{AssetTypeFiat, currency.TRY.String(), "", "", true}) // Turkish Lira, TRY(₺)
 
 	// Additional common currencies
 	BRL = mustEnrollAsset(AssetSetting{AssetTypeFiat, currency.BRL.String(), "", "", false}) // Brazilian Real (R$)
@@ -142,7 +144,6 @@ var (
 	PLN = mustEnrollAsset(AssetSetting{AssetTypeFiat, currency.PLN.String(), "", "", false}) // Polish Zloty (PLN)
 	SAR = mustEnrollAsset(AssetSetting{AssetTypeFiat, currency.SAR.String(), "", "", false}) // Saudi Riyal (SAR)
 	THB = mustEnrollAsset(AssetSetting{AssetTypeFiat, currency.THB.String(), "", "", false}) // Thai Baht (฿)
-	TRY = mustEnrollAsset(AssetSetting{AssetTypeFiat, currency.TRY.String(), "", "", false}) // Turkish Lira, TRY(₺)
 	TWD = mustEnrollAsset(AssetSetting{AssetTypeFiat, currency.TWD.String(), "", "", false}) // New Taiwan dollar, TWD (NT$)
 	ZAR = mustEnrollAsset(AssetSetting{AssetTypeFiat, currency.ZAR.String(), "", "", false}) // South African Rand (ZAR)
 

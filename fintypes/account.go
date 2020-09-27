@@ -192,7 +192,7 @@ func (a *Account) AddFree(ap AssetProperty, toAdd gdecimal.Decimal) {
 
 // 换算成USD
 // 计算的用途是统计回报的相关指标
-func (a *Account) ExchangeToUSD(ticks Ticks, ignoreNotFound bool) (*AssetAmount, error) {
+func (a *Account) ExchangeToUSD(ticks Ticks, ignorePairsNotFound bool) (*AssetAmount, error) {
 	res := &AssetAmount{}
 
 	for _, balance := range a.Balances {
@@ -202,7 +202,7 @@ func (a *Account) ExchangeToUSD(ticks Ticks, ignoreNotFound bool) (*AssetAmount,
 		} else {
 			price, err := ticks.GetUSDPrice(MarketSpot, unit)
 			if err != nil {
-				if ignoreNotFound {
+				if ignorePairsNotFound {
 					continue
 				}
 				return nil, err

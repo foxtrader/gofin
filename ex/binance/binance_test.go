@@ -14,7 +14,7 @@ import (
 func TestBinance_GetTicks(t *testing.T) {
 	ex, err := New("", "", "socks5://127.0.0.1:7448", nil, "")
 	gtest.Assert(t, err)
-	ticks, err := ex.GetTicks()
+	ticks, err := ex.GetTicks(true)
 	gtest.Assert(t, err)
 	if len(ticks) < 100 {
 		gtest.PrintlnExit(t, "GetTicks error1")
@@ -59,7 +59,7 @@ func TestBinance_GetMarketInfo(t *testing.T) {
 		return
 	}
 
-	mi, err := bnc.GetMarketInfo()
+	mi, err := bnc.GetMarketInfo(true)
 	if err != nil {
 		t.Error(err)
 		return
@@ -239,3 +239,12 @@ func TestBinance_SubKline(t *testing.T) {
 	}
 }
 */
+
+func TestBinance_GetDepositAddresses(t *testing.T) {
+	ex, err := New("", "", "socks5://127.0.0.1:7448", nil, "")
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	ex.GetDepositAddresses()
+}
